@@ -28,7 +28,7 @@ from tfx.components.trainer.fn_args_utils import FnArgs
 from tfx_bsl.tfxio import dataset_options
 
 # Categorical features are assumed to each have a maximum value in the dataset.
-_MAX_CATEGORICAL_FEATURE_VALUES = [24, 31, 13]
+_MAX_CATEGORICAL_FEATURE_VALUES = [24, 31, 13, 2000, 2000, 80, 80]
 
 _CATEGORICAL_FEATURE_KEYS = [
     'trip_start_hour', 'trip_start_day', 'trip_start_month',
@@ -174,69 +174,127 @@ def _build_keras_model(hidden_units: List[int] = None) -> tf.keras.Model:
   Returns:
     A Wide and Deep keras Model.
   """
-  # Following values are hard coded for simplicity in this example,
-  # However prefarably they should be passsed in as hparams.
+  print("DEBUG: Starting model building...")
 
   # Keras needs the feature definitions at compile time.
   deep_input = {
       colname: tf.keras.layers.Input(name=colname, shape=(1,), dtype=tf.float32)
       for colname in _transformed_names(_DENSE_FLOAT_FEATURE_KEYS)
   }
+  print(f"DEBUG: deep_input keys: {list(deep_input.keys())}")
+
   wide_vocab_input = {
       colname: tf.keras.layers.Input(name=colname, shape=(1,), dtype='int32')
       for colname in _transformed_names(_VOCAB_FEATURE_KEYS)
   }
+  print(f"DEBUG: wide_vocab_input keys: {list(wide_vocab_input.keys())}")
+
   wide_bucket_input = {
       colname: tf.keras.layers.Input(name=colname, shape=(1,), dtype='int32')
       for colname in _transformed_names(_BUCKET_FEATURE_KEYS)
   }
+  print(f"DEBUG: wide_bucket_input keys: {list(wide_bucket_input.keys())}")
+
   wide_categorical_input = {
       colname: tf.keras.layers.Input(name=colname, shape=(1,), dtype='int32')
       for colname in _transformed_names(_CATEGORICAL_FEATURE_KEYS)
   }
+  print(f"DEBUG: wide_categorical_input keys: {list(wide_categorical_input.keys())}")
   input_layers = {
       **deep_input,
       **wide_vocab_input,
       **wide_bucket_input,
       **wide_categorical_input,
   }
+  print(f"DEBUG: Total input_layers: {len(input_layers)}")
 
+  # Build deep branch
+  print("DEBUG: Building deep branch...")
   deep = tf.keras.layers.concatenate(
       [tf.keras.layers.Normalization()(layer) for layer in deep_input.values()]
   )
   for numnodes in (hidden_units or [100, 70, 50, 25]):
     deep = tf.keras.layers.Dense(numnodes)(deep)
+  print("DEBUG: Deep branch completed")
 
+  # Build wide branch
+  print("DEBUG: Building wide branch...")
   wide_layers = []
+
   for key in _transformed_names(_VOCAB_FEATURE_KEYS):
+    print(f"DEBUG: Processing vocab key: {key}")
     wide_layers.append(
         tf.keras.layers.CategoryEncoding(num_tokens=_VOCAB_SIZE + _OOV_SIZE)(
             input_layers[key]
         )
     )
+
   for key in _transformed_names(_BUCKET_FEATURE_KEYS):
+    print(f"DEBUG: Processing bucket key: {key}")
     wide_layers.append(
         tf.keras.layers.CategoryEncoding(num_tokens=_FEATURE_BUCKET_COUNT)(
             input_layers[key]
         )
     )
+
   for key, num_tokens in zip(
       _transformed_names(_CATEGORICAL_FEATURE_KEYS),
       _MAX_CATEGORICAL_FEATURE_VALUES,
   ):
+    print(f"DEBUG: Processing categorical key: {key} with {num_tokens} tokens")
     wide_layers.append(
         tf.keras.layers.CategoryEncoding(num_tokens=num_tokens)(
             input_layers[key]
         )
     )
+
+  print(f"DEBUG: Wide layers count: {len(wide_layers)}")
   wide = tf.keras.layers.concatenate(wide_layers)
+  print("DEBUG: Wide branch completed")
 
-  output = tf.keras.layers.Dense(1, activation='sigmoid')(
-      tf.keras.layers.concatenate([deep, wide])
-  )
+  # Combine and create output
+  print("DEBUG: Creating final output...")
+  combined = tf.keras.layers.concatenate([deep, wide])
+  output = tf.keras.layers.Dense(1, activation='sigmoid')(combined)
   output = tf.keras.layers.Reshape((1,))(output)
+  print("DEBUG: Output layer created")
 
-  model = tf.keras.Model(input_layers, output)
+  # Create model
+  print("DEBUG: Creating model...")
+  print(f"DEBUG: input_layers type: {type(input_layers)}")
+  print(f"DEBUG: output type: {type(output)}")
+
+  try:
+    model = tf.keras.Model(inputs=input_layers, outputs=output)
+    print("DEBUG: Model created successfully!")
+  except Exception as e:
+    print(f"DEBUG: Model creation failed: {e}")
+    print("DEBUG: Trying to trace input connections...")
+
+    # Let's check which inputs are actually connected
+    used_inputs = set()
+
+    # Check deep inputs
+    for key, layer in deep_input.items():
+      print(f"DEBUG: Checking if {key} is used in deep branch")
+
+    # Check wide inputs
+    for key in wide_vocab_input:
+      if key in input_layers:
+        used_inputs.add(key)
+    for key in wide_bucket_input:
+      if key in input_layers:
+        used_inputs.add(key)
+    for key in wide_categorical_input:
+      if key in input_layers:
+        used_inputs.add(key)
+
+    print(f"DEBUG: Used inputs: {used_inputs}")
+    print(f"DEBUG: All inputs: {set(input_layers.keys())}")
+    print(f"DEBUG: Unused inputs: {set(input_layers.keys()) - used_inputs}")
+
+    raise
+
   model.compile(
       loss='binary_crossentropy',
       optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
@@ -244,6 +302,87 @@ def _build_keras_model(hidden_units: List[int] = None) -> tf.keras.Model:
   )
   model.summary(print_fn=logging.info)
   return model
+
+
+# def _build_keras_model(hidden_units: List[int] = None) -> tf.keras.Model:
+#   """Creates a DNN Keras model for classifying taxi data.
+
+#   Args:
+#     hidden_units: [int], the layer sizes of the DNN (input layer first).
+
+#   Returns:
+#     A Wide and Deep keras Model.
+#   """
+#   # Following values are hard coded for simplicity in this example,
+#   # However prefarably they should be passsed in as hparams.
+
+#   # Keras needs the feature definitions at compile time.
+#   deep_input = {
+#       colname: tf.keras.layers.Input(name=colname, shape=(1,), dtype=tf.float32)
+#       for colname in _transformed_names(_DENSE_FLOAT_FEATURE_KEYS)
+#   }
+#   wide_vocab_input = {
+#       colname: tf.keras.layers.Input(name=colname, shape=(1,), dtype='int32')
+#       for colname in _transformed_names(_VOCAB_FEATURE_KEYS)
+#   }
+#   wide_bucket_input = {
+#       colname: tf.keras.layers.Input(name=colname, shape=(1,), dtype='int32')
+#       for colname in _transformed_names(_BUCKET_FEATURE_KEYS)
+#   }
+#   wide_categorical_input = {
+#       colname: tf.keras.layers.Input(name=colname, shape=(1,), dtype='int32')
+#       for colname in _transformed_names(_CATEGORICAL_FEATURE_KEYS)
+#   }
+#   input_layers = {
+#       **deep_input,
+#       **wide_vocab_input,
+#       **wide_bucket_input,
+#       **wide_categorical_input,
+#   }
+
+#   deep = tf.keras.layers.concatenate(
+#       [tf.keras.layers.Normalization()(layer) for layer in deep_input.values()]
+#   )
+#   for numnodes in (hidden_units or [100, 70, 50, 25]):
+#     deep = tf.keras.layers.Dense(numnodes)(deep)
+
+#   wide_layers = []
+#   for key in _transformed_names(_VOCAB_FEATURE_KEYS):
+#     wide_layers.append(
+#         tf.keras.layers.CategoryEncoding(num_tokens=_VOCAB_SIZE + _OOV_SIZE)(
+#             input_layers[key]
+#         )
+#     )
+#   for key in _transformed_names(_BUCKET_FEATURE_KEYS):
+#     wide_layers.append(
+#         tf.keras.layers.CategoryEncoding(num_tokens=_FEATURE_BUCKET_COUNT)(
+#             input_layers[key]
+#         )
+#     )
+#   for key, num_tokens in zip(
+#       _transformed_names(_CATEGORICAL_FEATURE_KEYS),
+#       _MAX_CATEGORICAL_FEATURE_VALUES,
+#   ):
+#     wide_layers.append(
+#         tf.keras.layers.CategoryEncoding(num_tokens=num_tokens)(
+#             input_layers[key]
+#         )
+#     )
+#   wide = tf.keras.layers.concatenate(wide_layers)
+
+#   output = tf.keras.layers.Dense(1, activation='sigmoid')(
+#       tf.keras.layers.concatenate([deep, wide])
+#   )
+#   output = tf.keras.layers.Reshape((1,))(output)
+
+#   model = tf.keras.Model(input_layers, output)
+#   model.compile(
+#       loss='binary_crossentropy',
+#       optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+#       metrics=[tf.keras.metrics.BinaryAccuracy()],
+#   )
+#   model.summary(print_fn=logging.info)
+#   return model
 
 
 # TFX Transform will call this function.

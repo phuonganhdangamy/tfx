@@ -41,7 +41,8 @@ _pipeline_name = 'chicago_taxi_native_keras'
 
 # This example assumes that the taxi data is stored in ~/taxi/data and the
 # taxi utility function is in ~/taxi.  Feel free to customize this as needed.
-_taxi_root = os.path.join(os.environ['HOME'], 'taxi')
+# _taxi_root = os.path.join(os.environ['HOME'], 'taxi')
+_taxi_root = os.path.dirname(os.path.abspath(__file__))
 _data_root = os.path.join(_taxi_root, 'data', 'simple')
 # Python module file to inject customized logic into the TFX components. The
 # Transform and Trainer both require user-defined functions to run successfully.
