@@ -243,7 +243,7 @@ def _build_keras_model(hidden_units: List[int] = None) -> tf.keras.Model:
   ):
     print(f"DEBUG: Processing categorical key: {key} with {num_tokens} tokens")
     wide_layers.append(
-        tf.keras.layers.CategoryEncoding(num_tokens=num_tokens)(
+        tf.keras.layers.CategoryEncoding(num_tokens=num_tokens + 1)( # +1 for OOV
             input_layers[key]
         )
     )
@@ -412,9 +412,19 @@ def preprocessing_fn(inputs):
     outputs[_transformed_name(key)] = tft.bucketize(
         _fill_in_missing(inputs[key]),
         _FEATURE_BUCKET_COUNT)
-
+    
   for key in _CATEGORICAL_FEATURE_KEYS:
-    outputs[_transformed_name(key)] = _fill_in_missing(inputs[key])
+    # Get the corresponding max value for this categorical feature
+    max_val = _MAX_CATEGORICAL_FEATURE_VALUES[_CATEGORICAL_FEATURE_KEYS.index(key)]
+    
+    # Use tft.compute_and_apply_vocabulary for proper encoding
+    outputs[_transformed_name(key)] = tft.compute_and_apply_vocabulary(
+        tf.strings.as_string(_fill_in_missing(inputs[key])),
+        top_k=max_val,
+        num_oov_buckets=1)
+
+  # for key in _CATEGORICAL_FEATURE_KEYS:
+  #   outputs[_transformed_name(key)] = _fill_in_missing(inputs[key])
 
   # Was this passenger a big tipper?
   taxi_fare = _fill_in_missing(inputs[_FARE_KEY])
