@@ -55,9 +55,9 @@ _serving_model_dir = os.path.join(_taxi_root, 'serving_model', _pipeline_name)
 # example code and metadata library is relative to $HOME, but you can store
 # these files anywhere on your local filesystem.
 _tfx_root = os.path.join(os.environ['HOME'], 'tfx')
-_pipeline_root = os.path.join(_tfx_root, 'pipelines', _pipeline_name)
+_pipeline_root = os.path.join(_taxi_root, 'pipelines', _pipeline_name)
 # Sqlite ML-metadata db path.
-_metadata_path = os.path.join(_tfx_root, 'metadata', _pipeline_name,
+_metadata_path = os.path.join(_taxi_root, 'metadata', _pipeline_name,
                               'metadata.db')
 
 # Pipeline arguments for Beam powered Components.
